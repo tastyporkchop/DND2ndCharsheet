@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8">
+        <title>mogwai-test</title>
+        <link rel="stylesheet" href="style.css">
+    </head>
+    <body>
+        <script src="pkg/browser_client.js"></script>
+        <script type=module>
+         window
+             .wasm_bindgen('pkg/browser_client_bg.wasm')
+             .then( m => m.main() )
+             .catch(console.error);
+        </script>
+    </body>
+</html>
