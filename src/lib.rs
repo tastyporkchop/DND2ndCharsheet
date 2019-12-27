@@ -27,21 +27,8 @@ pub fn main() -> Result<(), JsValue> {
     console_log::init_with_level(Level::Trace).unwrap();
 
     let character = Character{
-        str: 0,
-        dex: 0,
-        con: 0,
-        int: 0,
-        wis: 0,
-        cha: 0
+        ..Default::default()
     };
     character.into_component()
         .run()
-//    div()
-//        .with(
-//            h1()
-//                .text("Hello from mogwai"))
-//        .with(new_form(tx))
-//        .rx_text("", rx)
-//        .build()?
-//        .run()
 }

@@ -1,13 +1,13 @@
 use mogwai::prelude::*;
 use mogwai::utils as mogwaiutils;
 use log::{info, error};
+use serde::Serialize;
 use crate::utils;
-//use crate::utils::{event_target_set_invalid, event_target_set_valid};
-use web_sys::Document;
-use web_sys::HtmlObjectElement;
 
 #[derive(Debug, Clone)]
 pub enum In {
+    CharName(String),
+    CharClass(String),
     Str(String),
     Dex(String),
     Con(String),
@@ -20,9 +20,17 @@ pub enum In {
 pub enum Out {
     Str(Option<i32>),
     Dex(Option<i32>),
+    Con(Option<i32>),
+    Int(Option<i32>),
+    Wis(Option<i32>),
+    Cha(Option<i32>),
+    JsonRender(Option<String>)
 }
 
+#[derive(Default, Serialize)]
 pub struct Character {
+    pub char_name: String,
+    pub char_class: String,
     pub str: i32,
     pub dex: i32,
     pub con: i32,
@@ -33,6 +41,9 @@ pub struct Character {
 
 impl Character {
     // TODO: implement derived values here
+    fn to_json_string(&self) -> Option<String> {
+        Some(serde_json::to_string_pretty(self).ok()?)
+    }
 }
 
 impl Component for Character {
@@ -40,7 +51,14 @@ impl Component for Character {
     type ViewMsg = Out;
 
     fn update(&mut self, msg: &Self::ModelMsg, tx_view: &Transmitter<Self::ViewMsg>, _sub: &Subscriber<Self::ModelMsg>) {
+
         match msg {
+            In::CharName(input) => {
+                self.char_name = input.clone();
+            },
+            In::CharClass(input) => {
+                self.char_class = input.clone();
+            },
             In::Str(input) => {
                 match input.parse::<i32>() {
                     Ok(input) => {
@@ -57,7 +75,7 @@ impl Component for Character {
                 match input.parse::<i32>() {
                     Ok(input) => {
                         info!("updated dex to {}", input);
-                        self.str = input;
+                        self.dex = input;
                         tx_view.send(&Out::Dex(Some(input)))
                     },
                     Err(_) => {
@@ -65,11 +83,58 @@ impl Component for Character {
                     },
                 }
             },
-            In::Con(input) => {info!("updated str to {}", input)},
-            In::Int(input) => {info!("updated str to {}", input)},
-            In::Wis(input) => {info!("updated str to {}", input)},
-            In::Cha(input) => {info!("updated str to {}", input)},
+            In::Con(input) => {
+                match input.parse::<i32>() {
+                    Ok(input) => {
+                        info!("updated con to {}", input);
+                        self.con = input;
+                        tx_view.send(&Out::Con(Some(input)))
+                    },
+                    Err(_) => {
+                        tx_view.send(&Out::Con(None))
+                    },
+                }
+            },
+            In::Int(input) => {
+                match input.parse::<i32>() {
+                    Ok(input) => {
+                        info!("updated int to {}", input);
+                        self.int = input;
+                        tx_view.send(&Out::Int(Some(input)))
+                    },
+                    Err(_) => {
+                        tx_view.send(&Out::Int(None))
+                    },
+                }
+            },
+            In::Wis(input) => {
+                match input.parse::<i32>() {
+                    Ok(input) => {
+                        info!("updated wis to {}", input);
+                        self.wis = input;
+                        tx_view.send(&Out::Wis(Some(input)))
+                    },
+                    Err(_) => {
+                        tx_view.send(&Out::Wis(None))
+                    },
+                }
+            },
+            In::Cha(input) => {
+                match input.parse::<i32>() {
+                    Ok(input) => {
+                        info!("updated cha to {}", input);
+                        self.cha = input;
+                        tx_view.send(&Out::Cha(Some(input)))
+                    },
+                    Err(_) => {
+                        tx_view.send(&Out::Cha(None))
+                    },
+                }
+            },
         }
+        // after changes update render
+        let json_render = self.to_json_string();
+        tx_view.send(&Out::JsonRender(json_render));
     }
 
     fn builder(&self, tx: Transmitter<Self::ModelMsg>, rx: Receiver<Self::ViewMsg>) -> GizmoBuilder {
@@ -88,12 +153,64 @@ impl Component for Character {
                 Out::Dex(None) => {
                     input_error_handler("dex", false)
                 },
-                _ => { },
+                Out::Con(Some(_)) => {
+                    input_error_handler("con", true)
+                },
+                Out::Con(None) => {
+                    input_error_handler("con", false)
+                },
+                Out::Int(Some(_)) => {
+                    input_error_handler("int", true)
+                },
+                Out::Int(None) => {
+                    input_error_handler("int", false)
+                },
+                Out::Wis(Some(_)) => {
+                    input_error_handler("wis", true)
+                },
+                Out::Wis(None) => {
+                    input_error_handler("wis", false)
+                },
+                Out::Cha(Some(_)) => {
+                    input_error_handler("cha", true)
+                },
+                Out::Cha(None) => {
+                    input_error_handler("cha", false)
+                },
+                Out::JsonRender(_) => {
+                    // do nothing
+                }
             }
         });
 
-        form()
+        let char_form = form()
             .attribute("class", "pure-form pure-form-stacked")
+            // -- Character name --
+            .with(label().attribute("for", "character_name").text("Character"))
+            .with(input()
+                .id("character_name")
+                .attribute("type", "text")
+                .tx_on("input", tx.contra_filter_map(|ev: &Event| {
+                    info!("name event:{:?}", ev);
+                    let input = utils::event_input_value(ev)?;
+                    Some(In::CharName(input))
+                }))
+            )
+            // -- Class --
+            .with(label().attribute("for", "character_class").text("Class / Kit"))
+            .with(select()
+                .id("character_class")
+                .with(option().attribute("value", "fighter").text("Fighter"))
+                .with(option().attribute("value", "wizard").text("Wizard"))
+                .with(option().attribute("value", "cleric").text("Cleric"))
+                .with(option().attribute("value", "rogue").text("Rogue"))
+                .tx_on("input", tx.contra_filter_map(|ev: &Event| {
+                    info!("select event:{:?}", ev);
+                    let input = utils::event_select_value(ev)?;
+                    info!("class input:{}", input);
+                    Some(In::CharClass(input))
+                }))
+            )
             // -- Str --
             .with(label().attribute("for", "str").text("Str"))
             .with(input()
@@ -114,29 +231,49 @@ impl Component for Character {
                 })))
             // -- Con --
             .with(label().attribute("for", "con").text("Con"))
-            .with(input().id("con").attribute("type", "text")
+            .with(input()
+                .id("con")
+                .attribute("type", "text")
                 .tx_on("input", tx.contra_filter_map(|ev: &Event| {
                     let input = utils::event_input_value(ev)?;
                     Some(In::Con(input))
                 })))
             .with(label().attribute("for", "int").text("Int"))
-            .with(input().id("int").attribute("type", "text")
+            .with(input()
+                .id("int")
+                .attribute("type", "text")
                 .tx_on("input", tx.contra_filter_map(|ev: &Event| {
                     let input = utils::event_input_value(ev)?;
                     Some(In::Int(input))
                 })))
             .with(label().attribute("for", "wis").text("Wis"))
-            .with(input().id("wis").attribute("type", "text")
+            .with(input()
+                .id("wis")
+                .attribute("type", "text")
                 .tx_on("input", tx.contra_filter_map(|ev: &Event| {
                     let input = utils::event_input_value(ev)?;
                     Some(In::Wis(input))
                 })))
             .with(label().attribute("for", "cha").text("Cha"))
-            .with(input().id("cha").attribute("type", "text")
+            .with(input()
+                .id("cha")
+                .attribute("type", "text")
                 .tx_on("input", tx.contra_filter_map(|ev: &Event| {
                     let input = utils::event_input_value(ev)?;
                     Some(In::Cha(input))
-                })))
+                })));
+
+        let json_render = textarea()
+            .rx_text("", rx.branch_filter_map(|ev| {
+                if let Out::JsonRender(Some(render)) = ev {
+                    Some(render.clone())
+                } else {
+                    None
+                }
+            }));
+        div()
+            .with(char_form)
+            .with(json_render)
     }
 }
 

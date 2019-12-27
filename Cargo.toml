@@ -39,7 +39,9 @@ version = "0.3"
 # Add more web-sys API's as you need them
 features = [
   "HtmlInputElement",
-  "HtmlObjectElement"
+  "HtmlObjectElement",
+  "HtmlSelectElement",
+  "HtmlOptionElement",
 ]
 
 [dev-dependencies]

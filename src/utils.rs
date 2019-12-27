@@ -1,8 +1,8 @@
 use mogwai::prelude::*;
-use web_sys::HtmlObjectElement;
-//use wasm_bindgen::prelude::*;
+use web_sys::{HtmlSelectElement};
 
-pub fn event_input_value(ev:&Event) -> Option<String> {
+pub fn event_input_value(ev:&Event) -> Option<String>
+{
     let input:HtmlInputElement =
         ev
             .target()?
@@ -16,20 +16,17 @@ pub fn event_input_value(ev:&Event) -> Option<String> {
     )
 }
 
-pub fn event_target_set_valid(ev: &Event) -> Option<String> {
-    let input:HtmlObjectElement =
+pub fn event_select_value(ev:&Event) -> Option<String>
+{
+    let input:HtmlSelectElement =
         ev
             .target()?
             .dyn_into()
             .ok()?;
-    Some(String::from(""))
+    Some(
+        input
+            .value()
+            .trim()
+            .to_string()
+    )
 }
-
-//pub fn event_target_set_invalid(ev: &EventTarget) {
-//    let target: &Option<HtmlObjectElement> =
-//        &ev.dyn_into().ok();
-//
-//    if let Some(t) = target {
-//        t.set_custom_validity("not valid");
-//    }
-//}
