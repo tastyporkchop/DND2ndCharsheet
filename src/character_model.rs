@@ -3,12 +3,37 @@ use mogwai::utils as mogwaiutils;
 use log::{info, error};
 use serde::Serialize;
 use crate::utils;
+use std::fmt::{Display, Formatter};
+use std::error::Error;
+use std::num::ParseIntError;
+
+type Result<T> = std::result::Result<T, CharError>;
+
+#[derive(Debug, Clone)]
+pub enum CharError {
+    ParseError(ParseIntError),
+    InvalidStrength(i32),
+    InvalidPercentile(Option<i32>),
+}
+
+impl Display for CharError {
+    fn fmt(&self, f: &mut Formatter) -> std::result::Result<(), std::fmt::Error> {
+        match self {
+            CharError::ParseError(pe) => pe.fmt(f),
+            CharError::InvalidStrength(i) => write!(f, "invalid strength:{}", i),
+            CharError::InvalidPercentile(i) => write!(f, "invalid strength percentile:{:?}", i),
+        }
+    }
+}
+
+impl Error for CharError {}
 
 #[derive(Debug, Clone)]
 pub enum In {
     CharName(String),
     CharClass(String),
     Str(String),
+    StrPercentile(String),
     Dex(String),
     Con(String),
     Int(String),
@@ -18,7 +43,7 @@ pub enum In {
 
 #[derive(Debug, Clone)]
 pub enum Out {
-    Str(Option<i32>),
+    StrPercentile(StrengthPercentile),
     Dex(Option<i32>),
     Con(Option<i32>),
     Int(Option<i32>),
@@ -27,11 +52,19 @@ pub enum Out {
     JsonRender(Option<String>)
 }
 
+#[derive(Debug, Clone)]
+pub struct StrengthPercentile {
+    str: i32,
+    per: Option<i32>,
+    err: Option<CharError>,
+}
+
 #[derive(Default, Serialize)]
 pub struct Character {
     pub char_name: String,
     pub char_class: String,
     pub str: i32,
+    pub str_percentile: Option<i32>,
     pub dex: i32,
     pub con: i32,
     pub int: i32,
@@ -43,6 +76,35 @@ impl Character {
     // TODO: implement derived values here
     fn to_json_string(&self) -> Option<String> {
         Some(serde_json::to_string_pretty(self).ok()?)
+    }
+
+    fn handle_str_update(&mut self, input: &str) -> Result<i32> {
+        let val = input.parse::<i32>()
+            .map_err(|e| { CharError::ParseError(e)} )?;
+        if (1..=25).contains(&val) {
+            self.str = val;
+            Ok(val)
+        } else {
+            Err(CharError::InvalidStrength(val))
+        }
+    }
+
+    fn handle_str_percentile_update(&mut self, input: &str) -> Result<Option<i32>> {
+        if input == "" {
+            self.str_percentile = None;
+            return Ok(None);
+        }
+
+        let val = input.parse::<i32>()
+            .map_err(|e| { CharError::ParseError(e)} )?;
+
+        self.str_percentile = Some(val);
+
+        if (1..=100).contains(&val) {
+            Ok(Some(val))
+        } else {
+            Err(CharError::InvalidPercentile(Some(val)))
+        }
     }
 }
 
@@ -60,15 +122,25 @@ impl Component for Character {
                 self.char_class = input.clone();
             },
             In::Str(input) => {
-                match input.parse::<i32>() {
+                match self.handle_str_update(input.as_str()) {
                     Ok(input) => {
                         info!("updated str to {}", input);
-                        self.str = input;
-                        tx_view.send(&Out::Str(Some(input)))
+                        tx_view.send(&Out::StrPercentile(StrengthPercentile{str: self.str, per: self.str_percentile, err: None}))
                     },
-                    Err(_) => {
-                        tx_view.send(&Out::Str(None))
+                    Err(e) => {
+                        tx_view.send(&Out::StrPercentile(StrengthPercentile{str: self.str, per: self.str_percentile, err: Some(e)}))
+                    }
+                }
+            },
+            In::StrPercentile(input) => {
+                match self.handle_str_percentile_update(input.as_str()) {
+                    Ok(input) => {
+                        info!("updated str_percentile to {:?}", input);
+                        tx_view.send(&Out::StrPercentile(StrengthPercentile{str: self.str, per: self.str_percentile, err: None}))
                     },
+                    Err(e) => {
+                        tx_view.send(&Out::StrPercentile(StrengthPercentile{str: self.str, per: self.str_percentile, err: Some(e)}))
+                    }
                 }
             },
             In::Dex(input) => {
@@ -141,11 +213,21 @@ impl Component for Character {
         // input field error handling
         rx.branch().respond(|msg| {
             match msg {
-                Out::Str(Some(_)) => {
-                    input_error_handler("str", true)
-                }
-                Out::Str(None) => {
-                    input_error_handler("str", false)
+                Out::StrPercentile(sp) => {
+                    if let Some(e) = &sp.err {
+                        match e {
+                            CharError::InvalidStrength(_) => {
+                                input_error_handler("str", false);
+                            },
+                            CharError::InvalidPercentile(_) => {
+                                input_error_handler("str_percentile", false);
+                            },
+                            _ => {},
+                        }
+                    } else {
+                        input_error_handler("str", true);
+                        input_error_handler("str_percentile", true);
+                    }
                 },
                 Out::Dex(Some(_)) => {
                     input_error_handler("dex", true)
@@ -220,6 +302,22 @@ impl Component for Character {
                     let input = utils::event_input_value(ev)?;
                     Some(In::Str(input))
                 })))
+            // -- Str Percentile --
+            .with(label().attribute("for", "str_percentile").text("Str %"))
+            .with(input()
+                .id("str_percentile")
+                .attribute("type", "text")
+                .rx_boolean_attribute("disabled", false, rx.branch_filter_map(|ev| {
+                    if let Out::StrPercentile(sp) = ev {
+                        Some(18 != sp.str)
+                    } else {
+                        None
+                    }
+                }))
+                .tx_on("input", tx.contra_filter_map(|ev: &Event| {
+                    let input = utils::event_input_value(ev)?;
+                    Some(In::StrPercentile(input))
+                })))
             // -- Dex --
             .with(label().attribute("for", "dex").text("Dex"))
             .with(input()
@@ -271,8 +369,29 @@ impl Component for Character {
                     None
                 }
             }));
+
+        let derived_scores = div()
+            .with(p().rx_text("Hit Adj", rx.branch_filter_map(|ev| {
+                match ev {
+                    Out::StrPercentile(s) => {
+                        match &s.err {
+                            Some(e) => {
+                                Some(format!("Hit Adj: Err! {:?}", e))
+                            },
+                            None => {
+                                match calc_hit_adjustment(s.str, s.per) {
+                                    Ok(v) => Some(format!("Hit Adj: {}", v)),
+                                    Err(e) => Some(format!("Hit Adj: Err! {:?}", e))
+                                }
+                            }
+                        }
+                    },
+                    _ => None
+                }
+            })));
         div()
             .with(char_form)
+            .with(derived_scores)
             .with(json_render)
     }
 }
@@ -297,6 +416,35 @@ fn input_error_handler(element_id: &str, is_valid: bool) {
         Err(e) => {
             error!("couldn't find element:{} error:{:?}", element_id, e);
         },
+    }
+}
+
+fn calc_hit_adjustment(strength: i32, percentile: Option<i32>) -> Result<i32> {
+    match strength {
+        1 => Ok(-5),
+        2|3 => Ok(-3),
+        4|5 => Ok(-2),
+        6|7 => Ok(-1),
+        8..=16 => Ok(0),
+        17 => Ok(1),
+        18 => {
+            if let Some(p) = percentile {
+                match p {
+                    1..=50 => Ok(1),
+                    51..=99 => Ok(2),
+                    100 => Ok(3),
+                    err => Err(CharError::InvalidPercentile(Some(err))),
+                }
+            } else {
+                Err(CharError::InvalidPercentile(None))
+            }
+        },
+        19|20 => Ok(3),
+        21|22 => Ok(4),
+        23 => Ok(5),
+        24 => Ok(6),
+        25 => Ok(7),
+        err => Err(CharError::InvalidStrength(err)),
     }
 }
 
