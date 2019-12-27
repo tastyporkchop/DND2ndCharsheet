@@ -116,6 +116,13 @@ impl StrengthPercentile {
                     Ok(2)
                 }
             },
+            19 => Ok(7),
+            20 => Ok(8),
+            21 => Ok(9),
+            22 => Ok(10),
+            23 => Ok(11),
+            24 => Ok(12),
+            25 => Ok(14),
             i => Err(InvalidStrength(i))
         }
     }
