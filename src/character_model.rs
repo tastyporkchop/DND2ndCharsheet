@@ -6,6 +6,7 @@ use crate::utils;
 use std::fmt::{Display, Formatter};
 use std::error::Error;
 use std::num::ParseIntError;
+use crate::character_model::CharError::{InvalidStrength, InvalidPercentile};
 
 type Result<T> = std::result::Result<T, CharError>;
 
@@ -59,6 +60,67 @@ pub struct StrengthPercentile {
     err: Option<CharError>,
 }
 
+impl StrengthPercentile {
+    fn hit_adj(&self) -> Result<i32> {
+        match self.str {
+            1 => Ok(-5),
+            2|3 => Ok(-3),
+            4|5 => Ok(-2),
+            6|7 => Ok(-1),
+            8..=16 => Ok(0),
+            17 => Ok(1),
+            18 => {
+                if let Some(p) = self.per {
+                    match p {
+                        1..=50 => Ok(1),
+                        51..=99 => Ok(2),
+                        100 => Ok(3),
+                        err => Err(CharError::InvalidPercentile(Some(err))),
+                    }
+                } else {
+                    Ok(1)
+                }
+            },
+            19|20 => Ok(3),
+            21|22 => Ok(4),
+            23 => Ok(5),
+            24 => Ok(6),
+            25 => Ok(7),
+            err => Err(CharError::InvalidStrength(err)),
+        }
+    }
+    fn damage_adj(&self) -> Result<i32> {
+        match self.str {
+            1 => Ok(-4),
+            2 => Ok(-2),
+            3 => Ok(-1),
+            4|5 => Ok(-1),
+            6|7 => Ok(0),
+            8|9 => Ok(0),
+            10|11 => Ok(0),
+            12|13 => Ok(0),
+            14|15 => Ok(0),
+            16 => Ok(1),
+            17 => Ok(1),
+            18 => {
+                if let Some(p) = self.per {
+                    match p {
+                        1..=50 => Ok(3),
+                        51..=75 => Ok(3),
+                        76..=90 => Ok(4),
+                        91..=99 => Ok(5),
+                        100 => Ok(6),
+                        i => Err(InvalidPercentile(Some(i)))
+                    }
+                } else {
+                    Ok(2)
+                }
+            },
+            i => Err(InvalidStrength(i))
+        }
+    }
+}
+
 #[derive(Default, Serialize)]
 pub struct Character {
     pub char_name: String,
@@ -73,7 +135,8 @@ pub struct Character {
 }
 
 impl Character {
-    // TODO: implement derived values here
+
+
     fn to_json_string(&self) -> Option<String> {
         Some(serde_json::to_string_pretty(self).ok()?)
     }
@@ -374,18 +437,22 @@ impl Component for Character {
             .with(p().rx_text("Hit Adj", rx.branch_filter_map(|ev| {
                 match ev {
                     Out::StrPercentile(s) => {
-                        match &s.err {
-                            Some(e) => {
-                                Some(format!("Hit Adj: Err! {:?}", e))
-                            },
-                            None => {
-                                match calc_hit_adjustment(s.str, s.per) {
-                                    Ok(v) => Some(format!("Hit Adj: {}", v)),
-                                    Err(e) => Some(format!("Hit Adj: Err! {:?}", e))
-                                }
-                            }
+                        match s.hit_adj() {
+                            Ok(v) => Some(format!("Hit Adj: {}", v)),
+                            Err(e) => Some(format!("Hit Adj: Err! {:?}", e))
                         }
                     },
+                    _ => None
+                }
+            })))
+            .with(p().rx_text("Damage Adj", rx.branch_filter_map(|ev| {
+                match ev {
+                    Out::StrPercentile(s) => {
+                        match s.damage_adj() {
+                            Ok(da) => Some(format!("Damage Adj: {}", da)),
+                            Err(e) => Some(format!("Damage Adj: Error:{:?}", e)),
+                        }
+                    }
                     _ => None
                 }
             })));
@@ -419,32 +486,4 @@ fn input_error_handler(element_id: &str, is_valid: bool) {
     }
 }
 
-fn calc_hit_adjustment(strength: i32, percentile: Option<i32>) -> Result<i32> {
-    match strength {
-        1 => Ok(-5),
-        2|3 => Ok(-3),
-        4|5 => Ok(-2),
-        6|7 => Ok(-1),
-        8..=16 => Ok(0),
-        17 => Ok(1),
-        18 => {
-            if let Some(p) = percentile {
-                match p {
-                    1..=50 => Ok(1),
-                    51..=99 => Ok(2),
-                    100 => Ok(3),
-                    err => Err(CharError::InvalidPercentile(Some(err))),
-                }
-            } else {
-                Err(CharError::InvalidPercentile(None))
-            }
-        },
-        19|20 => Ok(3),
-        21|22 => Ok(4),
-        23 => Ok(5),
-        24 => Ok(6),
-        25 => Ok(7),
-        err => Err(CharError::InvalidStrength(err)),
-    }
-}
 
