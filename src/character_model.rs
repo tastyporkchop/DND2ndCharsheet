@@ -12,7 +12,8 @@ type Result<T> = std::result::Result<T, CharError>;
 
 #[derive(Debug, Clone)]
 pub enum CharError {
-    ParseError(ParseIntError),
+    StrParseError(ParseIntError),
+    PercentParseError(ParseIntError),
     InvalidStrength(i32),
     InvalidPercentile(Option<i32>),
 }
@@ -20,7 +21,8 @@ pub enum CharError {
 impl Display for CharError {
     fn fmt(&self, f: &mut Formatter) -> std::result::Result<(), std::fmt::Error> {
         match self {
-            CharError::ParseError(pe) => pe.fmt(f),
+            CharError::StrParseError(pe) => pe.fmt(f),
+            CharError::PercentParseError(pe) => pe.fmt(f),
             CharError::InvalidStrength(i) => write!(f, "invalid strength:{}", i),
             CharError::InvalidPercentile(i) => write!(f, "invalid strength percentile:{:?}", i),
         }
@@ -126,6 +128,80 @@ impl StrengthPercentile {
             i => Err(InvalidStrength(i))
         }
     }
+    fn weight_allow(&self) -> Result<i32> {
+        match self.str {
+            1 => Ok(1),
+            2 => Ok(1),
+            3 => Ok(5),
+            4|5 => Ok(10),
+            6|7 => Ok(20),
+            8|9 => Ok(35),
+            10|11 => Ok(40),
+            12|13 => Ok(45),
+            14|15 => Ok(55),
+            16 => Ok(70),
+            17 => Ok(85),
+            18 => {
+                if let Some(p) = self.per {
+                    match p {
+                        1..=50 => Ok(135),
+                        51..=75 => Ok(160),
+                        76..=90 => Ok(185),
+                        91..=99 => Ok(235),
+                        100 => Ok(335),
+                        i => Err(InvalidPercentile(Some(i)))
+                    }
+                } else {
+                    Ok(110)
+                }
+            },
+            19 => Ok(485),
+            20 => Ok(535),
+            21 => Ok(635),
+            22 => Ok(785),
+            23 => Ok(935),
+            24 => Ok(1235),
+            25 => Ok(1535),
+            i => Err(InvalidStrength(i))
+        }
+    }
+    fn max_press(&self) -> Result<i32> {
+        match self.str {
+            1 => Ok(3),
+            2 => Ok(5),
+            3 => Ok(10),
+            4|5 => Ok(25),
+            6|7 => Ok(55),
+            8|9 => Ok(90),
+            10|11 => Ok(11), // todo fix this
+            12|13 => Ok(45),
+            14|15 => Ok(55),
+            16 => Ok(70),
+            17 => Ok(85),
+            18 => {
+                if let Some(p) = self.per {
+                    match p {
+                        1..=50 => Ok(135),
+                        51..=75 => Ok(160),
+                        76..=90 => Ok(185),
+                        91..=99 => Ok(235),
+                        100 => Ok(335),
+                        i => Err(InvalidPercentile(Some(i)))
+                    }
+                } else {
+                    Ok(110)
+                }
+            },
+            19 => Ok(485),
+            20 => Ok(535),
+            21 => Ok(635),
+            22 => Ok(785),
+            23 => Ok(935),
+            24 => Ok(1235),
+            25 => Ok(1535),
+            i => Err(InvalidStrength(i))
+        }
+    }
 }
 
 #[derive(Default, Serialize)]
@@ -150,7 +226,7 @@ impl Character {
 
     fn handle_str_update(&mut self, input: &str) -> Result<i32> {
         let val = input.parse::<i32>()
-            .map_err(|e| { CharError::ParseError(e)} )?;
+            .map_err(|e| { CharError::StrParseError(e)} )?;
         if (1..=25).contains(&val) {
             self.str = val;
             Ok(val)
@@ -166,7 +242,7 @@ impl Character {
         }
 
         let val = input.parse::<i32>()
-            .map_err(|e| { CharError::ParseError(e)} )?;
+            .map_err(|e| { CharError::PercentParseError(e)} )?;
 
         self.str_percentile = Some(val);
 
@@ -286,10 +362,12 @@ impl Component for Character {
                 Out::StrPercentile(sp) => {
                     if let Some(e) = &sp.err {
                         match e {
-                            CharError::InvalidStrength(_) => {
+                            CharError::InvalidStrength(_)
+                            | CharError::StrParseError(_) => {
                                 input_error_handler("str", false);
                             },
-                            CharError::InvalidPercentile(_) => {
+                            CharError::PercentParseError(_)
+                            | CharError::InvalidPercentile(_)=> {
                                 input_error_handler("str_percentile", false);
                             },
                             _ => {},
