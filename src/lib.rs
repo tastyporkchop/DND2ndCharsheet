@@ -10,10 +10,11 @@ use mogwai::prelude::*;
 use std::panic;
 use wasm_bindgen::prelude::*;
 use crate::character_model::Character;
-//use std::str::from_utf8;
+use std::result::Result;
 
 mod character_model;
 mod utils;
+mod common;
 
 // When the `wee_alloc` feature is enabled, use `wee_alloc` as the global
 // allocator.

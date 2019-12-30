@@ -1,38 +1,13 @@
 use mogwai::prelude::*;
-use mogwai::utils as mogwaiutils;
 use log::{info, error};
 use serde::Serialize;
 use crate::utils;
 use std::fmt::{Display, Formatter};
-use std::error::Error;
-use std::num::ParseIntError;
-use crate::character_model::CharError::{InvalidStrength, InvalidPercentile};
+use crate::common::CharError::{InvalidStrength, InvalidPercentile};
 use std::str::FromStr;
-
-type Result<T> = std::result::Result<T, CharError>;
-
-#[derive(Debug, Clone)]
-pub enum CharError {
-    StrParseError(ParseIntError),
-    PercentParseError(ParseIntError),
-    InvalidStrength(i32),
-    InvalidPercentile(Option<i32>),
-    CharacterClassParseError(String),
-}
-
-impl Display for CharError {
-    fn fmt(&self, f: &mut Formatter) -> std::result::Result<(), std::fmt::Error> {
-        match self {
-            CharError::StrParseError(pe) => pe.fmt(f),
-            CharError::PercentParseError(pe) => pe.fmt(f),
-            CharError::InvalidStrength(i) => write!(f, "invalid strength:{}", i),
-            CharError::InvalidPercentile(i) => write!(f, "invalid strength percentile:{:?}", i),
-            CharError::CharacterClassParseError(i) => write!(f, "invalid class:{}", i),
-        }
-    }
-}
-
-impl Error for CharError {}
+use crate::common::CharError;
+use crate::common::Result;
+use crate::utils::{input_error_handler, build_form_field_input, build_form_field_select};
 
 #[derive(Debug, Clone)]
 pub enum In {
@@ -678,53 +653,5 @@ impl Default for CharacterClass {
     fn default() -> Self {
         CharacterClass::Fighter
     }
-}
-
-fn input_error_handler(element_id: &str, is_valid: bool) {
-    let input = mogwaiutils::document()
-        // TODO: remove expect and pass error up
-        .get_element_by_id(element_id).expect("to find element")
-        .dyn_into::<HtmlInputElement>();
-
-    match input {
-        Ok(element) => {
-            if is_valid {
-                info!("valid");
-                element.set_custom_validity("");
-            } else {
-                info!("invalid");
-                // TODO: set a good custom string
-                element.set_custom_validity("invalid input");
-            }
-        },
-        Err(e) => {
-            error!("couldn't find element:{} error:{:?}", element_id, e);
-        },
-    }
-}
-
-fn build_form_field_input(input: GizmoBuilder, id: &str, name: &str) -> GizmoBuilder {
-    div()
-        .attribute("class", "pure-control-group")
-        .with(label().attribute("for", id).text(name))
-        .with(input
-            .id(id)
-            .attribute("type", "text")
-        )
-}
-
-fn build_form_field_select(select: GizmoBuilder, id: &str, name: &str, options: Vec<&str>) -> GizmoBuilder {
-    let mut select = select
-        .id(id)
-        .boolean_attribute("required");
-
-    for opt in options {
-        select = select.with(option().attribute("value", opt).text(opt));
-    }
-
-    div()
-        .attribute("class", "pure-control-group")
-        .with(label().attribute("for", id).text(name))
-        .with(select)
 }
 
