@@ -1,6 +1,6 @@
-use std::num::ParseIntError;
-use std::fmt::{Display, Formatter};
 use std::error::Error;
+use std::fmt::{Display, Formatter};
+use std::num::ParseIntError;
 
 pub type Result<T> = std::result::Result<T, CharError>;
 

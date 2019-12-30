@@ -1,20 +1,13 @@
-//extern crate console_error_panic_hook;
-//extern crate console_log;
-//extern crate log;
-//extern crate mogwai;
-//extern crate serde;
-//extern crate serde_json;
-
+use crate::character_model::Character;
 use log::Level;
 use mogwai::prelude::*;
 use std::panic;
-use wasm_bindgen::prelude::*;
-use crate::character_model::Character;
 use std::result::Result;
+use wasm_bindgen::prelude::*;
 
 mod character_model;
-mod utils;
 mod common;
+mod utils;
 
 // When the `wee_alloc` feature is enabled, use `wee_alloc` as the global
 // allocator.
@@ -27,9 +20,8 @@ pub fn main() -> Result<(), JsValue> {
     panic::set_hook(Box::new(console_error_panic_hook::hook));
     console_log::init_with_level(Level::Trace).unwrap();
 
-    let character = Character{
+    let character = Character {
         ..Default::default()
     };
-    character.into_component()
-        .run()
+    character.into_component().run()
 }
