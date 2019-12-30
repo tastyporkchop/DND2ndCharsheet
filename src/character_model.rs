@@ -1,38 +1,13 @@
-use mogwai::prelude::*;
-use mogwai::utils as mogwaiutils;
-use log::{info, error};
-use serde::Serialize;
+use crate::common::CharError;
+use crate::common::CharError::{InvalidPercentile, InvalidStrength};
+use crate::common::Result;
 use crate::utils;
+use crate::utils::{build_form_field_input, build_form_field_select, input_error_handler};
+use log::{error, info};
+use mogwai::prelude::*;
+use serde::Serialize;
 use std::fmt::{Display, Formatter};
-use std::error::Error;
-use std::num::ParseIntError;
-use crate::character_model::CharError::{InvalidStrength, InvalidPercentile};
 use std::str::FromStr;
-
-type Result<T> = std::result::Result<T, CharError>;
-
-#[derive(Debug, Clone)]
-pub enum CharError {
-    StrParseError(ParseIntError),
-    PercentParseError(ParseIntError),
-    InvalidStrength(i32),
-    InvalidPercentile(Option<i32>),
-    CharacterClassParseError(String),
-}
-
-impl Display for CharError {
-    fn fmt(&self, f: &mut Formatter) -> std::result::Result<(), std::fmt::Error> {
-        match self {
-            CharError::StrParseError(pe) => pe.fmt(f),
-            CharError::PercentParseError(pe) => pe.fmt(f),
-            CharError::InvalidStrength(i) => write!(f, "invalid strength:{}", i),
-            CharError::InvalidPercentile(i) => write!(f, "invalid strength percentile:{:?}", i),
-            CharError::CharacterClassParseError(i) => write!(f, "invalid class:{}", i),
-        }
-    }
-}
-
-impl Error for CharError {}
 
 #[derive(Debug, Clone)]
 pub enum In {
@@ -56,7 +31,7 @@ pub enum Out {
     Int(Option<i32>),
     Wis(Option<i32>),
     Cha(Option<i32>),
-    JsonRender(Option<String>)
+    JsonRender(Option<String>),
 }
 
 #[derive(Debug, Clone)]
@@ -70,9 +45,9 @@ impl StrengthPercentile {
     fn hit_adj(&self) -> Result<i32> {
         match self.str {
             1 => Ok(-5),
-            2|3 => Ok(-3),
-            4|5 => Ok(-2),
-            6|7 => Ok(-1),
+            2 | 3 => Ok(-3),
+            4 | 5 => Ok(-2),
+            6 | 7 => Ok(-1),
             8..=16 => Ok(0),
             17 => Ok(1),
             18 => {
@@ -86,9 +61,9 @@ impl StrengthPercentile {
                 } else {
                     Ok(1)
                 }
-            },
-            19|20 => Ok(3),
-            21|22 => Ok(4),
+            }
+            19 | 20 => Ok(3),
+            21 | 22 => Ok(4),
             23 => Ok(5),
             24 => Ok(6),
             25 => Ok(7),
@@ -100,12 +75,12 @@ impl StrengthPercentile {
             1 => Ok(-4),
             2 => Ok(-2),
             3 => Ok(-1),
-            4|5 => Ok(-1),
-            6|7 => Ok(0),
-            8|9 => Ok(0),
-            10|11 => Ok(0),
-            12|13 => Ok(0),
-            14|15 => Ok(0),
+            4 | 5 => Ok(-1),
+            6 | 7 => Ok(0),
+            8 | 9 => Ok(0),
+            10 | 11 => Ok(0),
+            12 | 13 => Ok(0),
+            14 | 15 => Ok(0),
             16 => Ok(1),
             17 => Ok(1),
             18 => {
@@ -116,12 +91,12 @@ impl StrengthPercentile {
                         76..=90 => Ok(4),
                         91..=99 => Ok(5),
                         100 => Ok(6),
-                        i => Err(InvalidPercentile(Some(i)))
+                        i => Err(InvalidPercentile(Some(i))),
                     }
                 } else {
                     Ok(2)
                 }
-            },
+            }
             19 => Ok(7),
             20 => Ok(8),
             21 => Ok(9),
@@ -129,7 +104,7 @@ impl StrengthPercentile {
             23 => Ok(11),
             24 => Ok(12),
             25 => Ok(14),
-            i => Err(InvalidStrength(i))
+            i => Err(InvalidStrength(i)),
         }
     }
     fn weight_allow(&self) -> Result<i32> {
@@ -137,12 +112,12 @@ impl StrengthPercentile {
             1 => Ok(1),
             2 => Ok(1),
             3 => Ok(5),
-            4|5 => Ok(10),
-            6|7 => Ok(20),
-            8|9 => Ok(35),
-            10|11 => Ok(40),
-            12|13 => Ok(45),
-            14|15 => Ok(55),
+            4 | 5 => Ok(10),
+            6 | 7 => Ok(20),
+            8 | 9 => Ok(35),
+            10 | 11 => Ok(40),
+            12 | 13 => Ok(45),
+            14 | 15 => Ok(55),
             16 => Ok(70),
             17 => Ok(85),
             18 => {
@@ -153,12 +128,12 @@ impl StrengthPercentile {
                         76..=90 => Ok(185),
                         91..=99 => Ok(235),
                         100 => Ok(335),
-                        i => Err(InvalidPercentile(Some(i)))
+                        i => Err(InvalidPercentile(Some(i))),
                     }
                 } else {
                     Ok(110)
                 }
-            },
+            }
             19 => Ok(485),
             20 => Ok(535),
             21 => Ok(635),
@@ -166,7 +141,7 @@ impl StrengthPercentile {
             23 => Ok(935),
             24 => Ok(1235),
             25 => Ok(1535),
-            i => Err(InvalidStrength(i))
+            i => Err(InvalidStrength(i)),
         }
     }
     fn max_press(&self) -> Result<i32> {
@@ -174,12 +149,12 @@ impl StrengthPercentile {
             1 => Ok(3),
             2 => Ok(5),
             3 => Ok(10),
-            4|5 => Ok(25),
-            6|7 => Ok(55),
-            8|9 => Ok(90),
-            10|11 => Ok(115),
-            12|13 => Ok(140),
-            14|15 => Ok(170),
+            4 | 5 => Ok(25),
+            6 | 7 => Ok(55),
+            8 | 9 => Ok(90),
+            10 | 11 => Ok(115),
+            12 | 13 => Ok(140),
+            14 | 15 => Ok(170),
             16 => Ok(195),
             17 => Ok(220),
             18 => {
@@ -190,12 +165,12 @@ impl StrengthPercentile {
                         76..=90 => Ok(330),
                         91..=99 => Ok(380),
                         100 => Ok(480),
-                        i => Err(InvalidPercentile(Some(i)))
+                        i => Err(InvalidPercentile(Some(i))),
                     }
                 } else {
                     Ok(255)
                 }
-            },
+            }
             19 => Ok(640),
             20 => Ok(700),
             21 => Ok(810),
@@ -203,20 +178,20 @@ impl StrengthPercentile {
             23 => Ok(1130),
             24 => Ok(1440),
             25 => Ok(1750),
-            i => Err(InvalidStrength(i))
+            i => Err(InvalidStrength(i)),
         }
     }
-    fn open_doors(&self) ->Result<i32> {
+    fn open_doors(&self) -> Result<i32> {
         match self.str {
             1 => Ok(3),
             2 => Ok(5),
             3 => Ok(10),
-            4|5 => Ok(25),
-            6|7 => Ok(55),
-            8|9 => Ok(90),
-            10|11 => Ok(115),
-            12|13 => Ok(140),
-            14|15 => Ok(170),
+            4 | 5 => Ok(25),
+            6 | 7 => Ok(55),
+            8 | 9 => Ok(90),
+            10 | 11 => Ok(115),
+            12 | 13 => Ok(140),
+            14 | 15 => Ok(170),
             16 => Ok(195),
             17 => Ok(220),
             18 => {
@@ -227,12 +202,12 @@ impl StrengthPercentile {
                         76..=90 => Ok(330),
                         91..=99 => Ok(380),
                         100 => Ok(480),
-                        i => Err(InvalidPercentile(Some(i)))
+                        i => Err(InvalidPercentile(Some(i))),
                     }
                 } else {
                     Ok(255)
                 }
-            },
+            }
             19 => Ok(640),
             20 => Ok(700),
             21 => Ok(810),
@@ -240,7 +215,7 @@ impl StrengthPercentile {
             23 => Ok(1130),
             24 => Ok(1440),
             25 => Ok(1750),
-            i => Err(InvalidStrength(i))
+            i => Err(InvalidStrength(i)),
         }
     }
 }
@@ -259,14 +234,14 @@ pub struct Character {
 }
 
 impl Character {
-
     fn to_json_string(&self) -> Option<String> {
         Some(serde_json::to_string_pretty(self).ok()?)
     }
 
     fn handle_str_update(&mut self, input: &str) -> Result<i32> {
-        let val = input.parse::<i32>()
-            .map_err(|e| { CharError::StrParseError(e)} )?;
+        let val = input
+            .parse::<i32>()
+            .map_err(|e| CharError::StrParseError(e))?;
         if (1..=25).contains(&val) {
             self.str = val;
             Ok(val)
@@ -281,8 +256,9 @@ impl Character {
             return Ok(None);
         }
 
-        let val = input.parse::<i32>()
-            .map_err(|e| { CharError::PercentParseError(e)} )?;
+        let val = input
+            .parse::<i32>()
+            .map_err(|e| CharError::PercentParseError(e))?;
 
         self.str_percentile = Some(val);
 
@@ -298,8 +274,12 @@ impl Component for Character {
     type ModelMsg = In;
     type ViewMsg = Out;
 
-    fn update(&mut self, msg: &Self::ModelMsg, tx_view: &Transmitter<Self::ViewMsg>, _sub: &Subscriber<Self::ModelMsg>) {
-
+    fn update(
+        &mut self,
+        msg: &Self::ModelMsg,
+        tx_view: &Transmitter<Self::ViewMsg>,
+        _sub: &Subscriber<Self::ModelMsg>,
+    ) {
         match msg {
             In::CharName(input) => {
                 self.char_name = input.clone();
@@ -403,61 +383,43 @@ impl Component for Character {
         tx_view.send(&Out::JsonRender(json_render));
     }
 
-    fn builder(&self, tx: Transmitter<Self::ModelMsg>, rx: Receiver<Self::ViewMsg>) -> GizmoBuilder {
+    fn builder(
+        &self,
+        tx: Transmitter<Self::ModelMsg>,
+        rx: Receiver<Self::ViewMsg>,
+    ) -> GizmoBuilder {
         // input field error handling
         rx.branch().respond(|msg| {
             match msg {
                 Out::CharClass(_cc) => {
                     // do something
-                },
+                }
                 Out::StrPercentile(sp) => {
                     if let Some(e) = &sp.err {
                         match e {
-                            CharError::InvalidStrength(_)
-                            | CharError::StrParseError(_) => {
+                            CharError::InvalidStrength(_) | CharError::StrParseError(_) => {
                                 input_error_handler("str", false);
-                            },
-                            CharError::PercentParseError(_)
-                            | CharError::InvalidPercentile(_)=> {
+                            }
+                            CharError::PercentParseError(_) | CharError::InvalidPercentile(_) => {
                                 input_error_handler("str_percentile", false);
-                            },
-                            _ => ()
+                            }
+                            _ => (),
                         }
                     } else {
                         input_error_handler("str", true);
                         input_error_handler("str_percentile", true);
                     }
-                },
-                Out::Dex(Some(_)) => {
-                    input_error_handler("dex", true)
-                },
-                Out::Dex(None) => {
-                    input_error_handler("dex", false)
-                },
-                Out::Con(Some(_)) => {
-                    input_error_handler("con", true)
-                },
-                Out::Con(None) => {
-                    input_error_handler("con", false)
-                },
-                Out::Int(Some(_)) => {
-                    input_error_handler("int", true)
-                },
-                Out::Int(None) => {
-                    input_error_handler("int", false)
-                },
-                Out::Wis(Some(_)) => {
-                    input_error_handler("wis", true)
-                },
-                Out::Wis(None) => {
-                    input_error_handler("wis", false)
-                },
-                Out::Cha(Some(_)) => {
-                    input_error_handler("cha", true)
-                },
-                Out::Cha(None) => {
-                    input_error_handler("cha", false)
-                },
+                }
+                Out::Dex(Some(_)) => input_error_handler("dex", true),
+                Out::Dex(None) => input_error_handler("dex", false),
+                Out::Con(Some(_)) => input_error_handler("con", true),
+                Out::Con(None) => input_error_handler("con", false),
+                Out::Int(Some(_)) => input_error_handler("int", true),
+                Out::Int(None) => input_error_handler("int", false),
+                Out::Wis(Some(_)) => input_error_handler("wis", true),
+                Out::Wis(None) => input_error_handler("wis", false),
+                Out::Cha(Some(_)) => input_error_handler("cha", true),
+                Out::Cha(None) => input_error_handler("cha", false),
                 Out::JsonRender(_) => {
                     // do nothing
                 }
@@ -465,179 +427,207 @@ impl Component for Character {
         });
 
         // Character Name input field
-        let char_name_input = input()
-            .tx_on("input", tx.contra_filter_map(|ev: &Event| {
+        let char_name_input = input().tx_on(
+            "input",
+            tx.contra_filter_map(|ev: &Event| {
                 let input = utils::event_input_value(ev)?;
                 Some(In::CharName(input))
-            }));
+            }),
+        );
 
-        let class_select = select()
-            .tx_on("input",
-                   tx.contra_filter_map(|ev: &Event| {
-                       let input = utils::event_select_value(ev)?;
-                       Some(In::CharClass(input))
-                   })
-            );
+        let class_select = select().tx_on(
+            "input",
+            tx.contra_filter_map(|ev: &Event| {
+                let input = utils::event_select_value(ev)?;
+                Some(In::CharClass(input))
+            }),
+        );
 
         // Str input field
-        let str_input = input()
-            .tx_on("input", tx.contra_filter_map(|ev: &Event| {
+        let str_input = input().tx_on(
+            "input",
+            tx.contra_filter_map(|ev: &Event| {
                 let input = utils::event_input_value(ev)?;
                 Some(In::Str(input))
-            }));
+            }),
+        );
 
         // Str % input field
         let str_per_input = input()
-            .rx_boolean_attribute("disabled", false, rx.branch_filter_map(|ev| {
-                if let Out::StrPercentile(sp) = ev {
-                    Some(18 != sp.str)
-                } else {
-                    None
-                }
-            }))
-            .tx_on("input", tx.contra_filter_map(|ev: &Event| {
-                let input = utils::event_input_value(ev)?;
-                Some(In::StrPercentile(input))
-            }));
+            .rx_boolean_attribute(
+                "disabled",
+                false,
+                rx.branch_filter_map(|ev| {
+                    if let Out::StrPercentile(sp) = ev {
+                        Some(18 != sp.str)
+                    } else {
+                        None
+                    }
+                }),
+            )
+            .tx_on(
+                "input",
+                tx.contra_filter_map(|ev: &Event| {
+                    let input = utils::event_input_value(ev)?;
+                    Some(In::StrPercentile(input))
+                }),
+            );
 
-        let dex_input = input()
-            .tx_on("input", tx.contra_filter_map(|ev: &Event| {
+        let dex_input = input().tx_on(
+            "input",
+            tx.contra_filter_map(|ev: &Event| {
                 let input = utils::event_input_value(ev)?;
                 Some(In::Dex(input))
-            }));
+            }),
+        );
 
-        let con_input = input()
-            .tx_on("input", tx.contra_filter_map(|ev: &Event| {
+        let con_input = input().tx_on(
+            "input",
+            tx.contra_filter_map(|ev: &Event| {
                 let input = utils::event_input_value(ev)?;
                 Some(In::Con(input))
-            }));
+            }),
+        );
 
-        let int_input = input()
-            .tx_on("input", tx.contra_filter_map(|ev: &Event| {
+        let int_input = input().tx_on(
+            "input",
+            tx.contra_filter_map(|ev: &Event| {
                 let input = utils::event_input_value(ev)?;
                 Some(In::Int(input))
-            }));
+            }),
+        );
 
-        let wis_input = input()
-            .tx_on("input", tx.contra_filter_map(|ev: &Event| {
+        let wis_input = input().tx_on(
+            "input",
+            tx.contra_filter_map(|ev: &Event| {
                 let input = utils::event_input_value(ev)?;
                 Some(In::Wis(input))
-            }));
+            }),
+        );
 
-        let cha_input = input()
-            .tx_on("input", tx.contra_filter_map(|ev: &Event| {
+        let cha_input = input().tx_on(
+            "input",
+            tx.contra_filter_map(|ev: &Event| {
                 let input = utils::event_input_value(ev)?;
                 Some(In::Cha(input))
-            }));
+            }),
+        );
 
         // Main form
         let char_form = form()
             .attribute("class", "pure-form pure-form-aligned")
-            .with(fieldset()
-                // -- Character name --
-                .with(build_form_field_input(char_name_input, "character_name", "Character"))
-                // -- Class --
-                .with(build_form_field_select(class_select, "character_class", "Class / Kit", vec![
-                    "- Select One -",
-                    CharacterClass::Fighter.to_string().as_str(),
-                    CharacterClass::Cleric.to_string().as_str(),
-                    CharacterClass::Wizard.to_string().as_str(),
-                    CharacterClass::Rogue.to_string().as_str()
-                ]))
-                // -- Str --
-                .with(build_form_field_input(str_input, "str", "Str"))
-                // -- Str Percentile --
-                .with(build_form_field_input(str_per_input, "str_percentile", "Str %"))
-                // -- Dex --
-                .with(build_form_field_input(dex_input, "dex", "Dex"))
-                // -- Con --
-                .with(build_form_field_input(con_input, "con", "Con"))
-                // -- Int --
-                .with(build_form_field_input(int_input, "int", "Int"))
-                // -- Wis --
-                .with(build_form_field_input(wis_input, "wis", "Wis"))
-                // -- Cha --
-                .with(build_form_field_input(cha_input, "cha", "Cha"))
+            .with(
+                fieldset()
+                    // -- Character name --
+                    .with(build_form_field_input(
+                        char_name_input,
+                        "character_name",
+                        "Character",
+                    ))
+                    // -- Class --
+                    .with(build_form_field_select(
+                        class_select,
+                        "character_class",
+                        "Class / Kit",
+                        vec![
+                            "- Select One -",
+                            CharacterClass::Fighter.to_string().as_str(),
+                            CharacterClass::Cleric.to_string().as_str(),
+                            CharacterClass::Wizard.to_string().as_str(),
+                            CharacterClass::Rogue.to_string().as_str(),
+                        ],
+                    ))
+                    // -- Str --
+                    .with(build_form_field_input(str_input, "str", "Str"))
+                    // -- Str Percentile --
+                    .with(build_form_field_input(
+                        str_per_input,
+                        "str_percentile",
+                        "Str %",
+                    ))
+                    // -- Dex --
+                    .with(build_form_field_input(dex_input, "dex", "Dex"))
+                    // -- Con --
+                    .with(build_form_field_input(con_input, "con", "Con"))
+                    // -- Int --
+                    .with(build_form_field_input(int_input, "int", "Int"))
+                    // -- Wis --
+                    .with(build_form_field_input(wis_input, "wis", "Wis"))
+                    // -- Cha --
+                    .with(build_form_field_input(cha_input, "cha", "Cha")),
             );
 
         let json_render = textarea()
             .attribute("rows", "10")
             .attribute("cols", "50")
-            .rx_text("", rx.branch_filter_map(|ev| {
-                if let Out::JsonRender(Some(render)) = ev {
-                    Some(render.clone())
-                } else {
-                    None
-                }
-            }));
+            .rx_text(
+                "",
+                rx.branch_filter_map(|ev| {
+                    if let Out::JsonRender(Some(render)) = ev {
+                        Some(render.clone())
+                    } else {
+                        None
+                    }
+                }),
+            );
 
         let derived_str_scores = vec![
-            p().rx_text("Hit Adj", rx.branch_filter_map(|ev| {
-                match ev {
-                    Out::StrPercentile(s) => {
-                        match s.hit_adj() {
-                            Ok(v) => Some(format!("Hit Adj: {}", v)),
-                            Err(e) => Some(format!("Hit Adj: Err! {:?}", e))
-                        }
+            p().rx_text(
+                "Hit Adj",
+                rx.branch_filter_map(|ev| match ev {
+                    Out::StrPercentile(s) => match s.hit_adj() {
+                        Ok(v) => Some(format!("Hit Adj: {}", v)),
+                        Err(e) => Some(format!("Hit Adj: Err! {:?}", e)),
                     },
-                    _ => None
-                }
-            })),
-            p().rx_text("Damage Adj", rx.branch_filter_map(|ev| {
-                match ev {
-                    Out::StrPercentile(s) => {
-                        match s.damage_adj() {
-                            Ok(v) => Some(format!("Damage Adj: {}", v)),
-                            Err(e) => Some(format!("Damage Adj: Err! {:?}", e))
-                        }
+                    _ => None,
+                }),
+            ),
+            p().rx_text(
+                "Damage Adj",
+                rx.branch_filter_map(|ev| match ev {
+                    Out::StrPercentile(s) => match s.damage_adj() {
+                        Ok(v) => Some(format!("Damage Adj: {}", v)),
+                        Err(e) => Some(format!("Damage Adj: Err! {:?}", e)),
                     },
-                    _ => None
-                }
-            })),
-            p().rx_text("Weight Allow", rx.branch_filter_map(|ev| {
-                match ev {
-                    Out::StrPercentile(s) => {
-                        match s.weight_allow() {
-                            Ok(v) => Some(format!("Weight Allow: {}", v)),
-                            Err(e) => Some(format!("Weight Allow: Err! {:?}", e))
-                        }
+                    _ => None,
+                }),
+            ),
+            p().rx_text(
+                "Weight Allow",
+                rx.branch_filter_map(|ev| match ev {
+                    Out::StrPercentile(s) => match s.weight_allow() {
+                        Ok(v) => Some(format!("Weight Allow: {}", v)),
+                        Err(e) => Some(format!("Weight Allow: Err! {:?}", e)),
                     },
-                    _ => None
-                }
-            })),
-            p().rx_text("Max Press", rx.branch_filter_map(|ev| {
-                match ev {
-                    Out::StrPercentile(s) => {
-                        match s.max_press() {
-                            Ok(v) => Some(format!("Max Press: {}", v)),
-                            Err(e) => Some(format!("Max Press: Err! {:?}", e))
-                        }
+                    _ => None,
+                }),
+            ),
+            p().rx_text(
+                "Max Press",
+                rx.branch_filter_map(|ev| match ev {
+                    Out::StrPercentile(s) => match s.max_press() {
+                        Ok(v) => Some(format!("Max Press: {}", v)),
+                        Err(e) => Some(format!("Max Press: Err! {:?}", e)),
                     },
-                    _ => None
-                }
-            })),
+                    _ => None,
+                }),
+            ),
         ];
 
-        let mut str_scores = div()
-            .attribute("class", "pure-g");
+        let mut str_scores = div().attribute("class", "pure-g");
         for gb in derived_str_scores {
-            str_scores = str_scores.with(
-                div()
-                    .attribute("class", "pure-u-sm-1-6")
-                    .with(gb));
+            str_scores = str_scores.with(div().attribute("class", "pure-u-sm-1-6").with(gb));
         }
 
         // -- main root --
         div()
-            .with(div()
-                .attribute("class", "pure-g")
-                .with(div()
-                    .attribute("class", "pure-u-lg-1-3")
-                    .with(char_form))
-                .with(div()
-                    .attribute("class", "pure-u-lg-1-3")
-                    .with(str_scores)))
-        .with(json_render)
+            .with(
+                div()
+                    .attribute("class", "pure-g")
+                    .with(div().attribute("class", "pure-u-lg-1-3").with(char_form))
+                    .with(div().attribute("class", "pure-u-lg-1-3").with(str_scores)),
+            )
+            .with(json_render)
     }
 }
 
@@ -658,7 +648,7 @@ impl FromStr for CharacterClass {
             "Cleric" => Ok(CharacterClass::Cleric),
             "Wizard" => Ok(CharacterClass::Wizard),
             "Rogue" => Ok(CharacterClass::Rogue),
-            _ => Err(CharError::CharacterClassParseError(String::from(s)))
+            _ => Err(CharError::CharacterClassParseError(String::from(s))),
         }
     }
 }
@@ -679,52 +669,3 @@ impl Default for CharacterClass {
         CharacterClass::Fighter
     }
 }
-
-fn input_error_handler(element_id: &str, is_valid: bool) {
-    let input = mogwaiutils::document()
-        // TODO: remove expect and pass error up
-        .get_element_by_id(element_id).expect("to find element")
-        .dyn_into::<HtmlInputElement>();
-
-    match input {
-        Ok(element) => {
-            if is_valid {
-                info!("valid");
-                element.set_custom_validity("");
-            } else {
-                info!("invalid");
-                // TODO: set a good custom string
-                element.set_custom_validity("invalid input");
-            }
-        },
-        Err(e) => {
-            error!("couldn't find element:{} error:{:?}", element_id, e);
-        },
-    }
-}
-
-fn build_form_field_input(input: GizmoBuilder, id: &str, name: &str) -> GizmoBuilder {
-    div()
-        .attribute("class", "pure-control-group")
-        .with(label().attribute("for", id).text(name))
-        .with(input
-            .id(id)
-            .attribute("type", "text")
-        )
-}
-
-fn build_form_field_select(select: GizmoBuilder, id: &str, name: &str, options: Vec<&str>) -> GizmoBuilder {
-    let mut select = select
-        .id(id)
-        .boolean_attribute("required");
-
-    for opt in options {
-        select = select.with(option().attribute("value", opt).text(opt));
-    }
-
-    div()
-        .attribute("class", "pure-control-group")
-        .with(label().attribute("for", id).text(name))
-        .with(select)
-}
-
