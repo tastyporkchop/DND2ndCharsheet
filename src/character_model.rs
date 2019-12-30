@@ -7,6 +7,7 @@ use std::fmt::{Display, Formatter};
 use std::error::Error;
 use std::num::ParseIntError;
 use crate::character_model::CharError::{InvalidStrength, InvalidPercentile};
+use std::str::FromStr;
 
 type Result<T> = std::result::Result<T, CharError>;
 
@@ -16,6 +17,7 @@ pub enum CharError {
     PercentParseError(ParseIntError),
     InvalidStrength(i32),
     InvalidPercentile(Option<i32>),
+    CharacterClassParseError(String),
 }
 
 impl Display for CharError {
@@ -25,6 +27,7 @@ impl Display for CharError {
             CharError::PercentParseError(pe) => pe.fmt(f),
             CharError::InvalidStrength(i) => write!(f, "invalid strength:{}", i),
             CharError::InvalidPercentile(i) => write!(f, "invalid strength percentile:{:?}", i),
+            CharError::CharacterClassParseError(i) => write!(f, "invalid class:{}", i),
         }
     }
 }
@@ -47,6 +50,7 @@ pub enum In {
 #[derive(Debug, Clone)]
 pub enum Out {
     StrPercentile(StrengthPercentile),
+    CharClass(CharacterClass),
     Dex(Option<i32>),
     Con(Option<i32>),
     Int(Option<i32>),
@@ -173,32 +177,69 @@ impl StrengthPercentile {
             4|5 => Ok(25),
             6|7 => Ok(55),
             8|9 => Ok(90),
-            10|11 => Ok(11), // todo fix this
-            12|13 => Ok(45),
-            14|15 => Ok(55),
-            16 => Ok(70),
-            17 => Ok(85),
+            10|11 => Ok(115),
+            12|13 => Ok(140),
+            14|15 => Ok(170),
+            16 => Ok(195),
+            17 => Ok(220),
             18 => {
                 if let Some(p) = self.per {
                     match p {
-                        1..=50 => Ok(135),
-                        51..=75 => Ok(160),
-                        76..=90 => Ok(185),
-                        91..=99 => Ok(235),
-                        100 => Ok(335),
+                        1..=50 => Ok(280),
+                        51..=75 => Ok(305),
+                        76..=90 => Ok(330),
+                        91..=99 => Ok(380),
+                        100 => Ok(480),
                         i => Err(InvalidPercentile(Some(i)))
                     }
                 } else {
-                    Ok(110)
+                    Ok(255)
                 }
             },
-            19 => Ok(485),
-            20 => Ok(535),
-            21 => Ok(635),
-            22 => Ok(785),
-            23 => Ok(935),
-            24 => Ok(1235),
-            25 => Ok(1535),
+            19 => Ok(640),
+            20 => Ok(700),
+            21 => Ok(810),
+            22 => Ok(970),
+            23 => Ok(1130),
+            24 => Ok(1440),
+            25 => Ok(1750),
+            i => Err(InvalidStrength(i))
+        }
+    }
+    fn open_doors(&self) ->Result<i32> {
+        match self.str {
+            1 => Ok(3),
+            2 => Ok(5),
+            3 => Ok(10),
+            4|5 => Ok(25),
+            6|7 => Ok(55),
+            8|9 => Ok(90),
+            10|11 => Ok(115),
+            12|13 => Ok(140),
+            14|15 => Ok(170),
+            16 => Ok(195),
+            17 => Ok(220),
+            18 => {
+                if let Some(p) = self.per {
+                    match p {
+                        1..=50 => Ok(280),
+                        51..=75 => Ok(305),
+                        76..=90 => Ok(330),
+                        91..=99 => Ok(380),
+                        100 => Ok(480),
+                        i => Err(InvalidPercentile(Some(i)))
+                    }
+                } else {
+                    Ok(255)
+                }
+            },
+            19 => Ok(640),
+            20 => Ok(700),
+            21 => Ok(810),
+            22 => Ok(970),
+            23 => Ok(1130),
+            24 => Ok(1440),
+            25 => Ok(1750),
             i => Err(InvalidStrength(i))
         }
     }
@@ -207,7 +248,7 @@ impl StrengthPercentile {
 #[derive(Default, Serialize)]
 pub struct Character {
     pub char_name: String,
-    pub char_class: String,
+    pub char_class: CharacterClass,
     pub str: i32,
     pub str_percentile: Option<i32>,
     pub dex: i32,
@@ -218,7 +259,6 @@ pub struct Character {
 }
 
 impl Character {
-
 
     fn to_json_string(&self) -> Option<String> {
         Some(serde_json::to_string_pretty(self).ok()?)
@@ -265,7 +305,15 @@ impl Component for Character {
                 self.char_name = input.clone();
             },
             In::CharClass(input) => {
-                self.char_class = input.clone();
+                match input.parse::<CharacterClass>() {
+                    Ok(cc) => {
+                        self.char_class = cc;
+                        tx_view.send(&Out::CharClass(cc));
+                    },
+                    Err(err) => {
+                        error!("I'm not sure what to do with class:{} with error:{} so I'm just going to ignore it.", input, err)
+                    }
+                }
             },
             In::Str(input) => {
                 match self.handle_str_update(input.as_str()) {
@@ -359,6 +407,9 @@ impl Component for Character {
         // input field error handling
         rx.branch().respond(|msg| {
             match msg {
+                Out::CharClass(_cc) => {
+                    // do something
+                },
                 Out::StrPercentile(sp) => {
                     if let Some(e) = &sp.err {
                         match e {
@@ -370,7 +421,7 @@ impl Component for Character {
                             | CharError::InvalidPercentile(_)=> {
                                 input_error_handler("str_percentile", false);
                             },
-                            _ => {},
+                            _ => ()
                         }
                     } else {
                         input_error_handler("str", true);
@@ -413,103 +464,105 @@ impl Component for Character {
             }
         });
 
+        // Character Name input field
+        let char_name_input = input()
+            .tx_on("input", tx.contra_filter_map(|ev: &Event| {
+                let input = utils::event_input_value(ev)?;
+                Some(In::CharName(input))
+            }));
+
+        let class_select = select()
+            .tx_on("input",
+                   tx.contra_filter_map(|ev: &Event| {
+                       let input = utils::event_select_value(ev)?;
+                       Some(In::CharClass(input))
+                   })
+            );
+
+        // Str input field
+        let str_input = input()
+            .tx_on("input", tx.contra_filter_map(|ev: &Event| {
+                let input = utils::event_input_value(ev)?;
+                Some(In::Str(input))
+            }));
+
+        // Str % input field
+        let str_per_input = input()
+            .rx_boolean_attribute("disabled", false, rx.branch_filter_map(|ev| {
+                if let Out::StrPercentile(sp) = ev {
+                    Some(18 != sp.str)
+                } else {
+                    None
+                }
+            }))
+            .tx_on("input", tx.contra_filter_map(|ev: &Event| {
+                let input = utils::event_input_value(ev)?;
+                Some(In::StrPercentile(input))
+            }));
+
+        let dex_input = input()
+            .tx_on("input", tx.contra_filter_map(|ev: &Event| {
+                let input = utils::event_input_value(ev)?;
+                Some(In::Dex(input))
+            }));
+
+        let con_input = input()
+            .tx_on("input", tx.contra_filter_map(|ev: &Event| {
+                let input = utils::event_input_value(ev)?;
+                Some(In::Con(input))
+            }));
+
+        let int_input = input()
+            .tx_on("input", tx.contra_filter_map(|ev: &Event| {
+                let input = utils::event_input_value(ev)?;
+                Some(In::Int(input))
+            }));
+
+        let wis_input = input()
+            .tx_on("input", tx.contra_filter_map(|ev: &Event| {
+                let input = utils::event_input_value(ev)?;
+                Some(In::Wis(input))
+            }));
+
+        let cha_input = input()
+            .tx_on("input", tx.contra_filter_map(|ev: &Event| {
+                let input = utils::event_input_value(ev)?;
+                Some(In::Cha(input))
+            }));
+
+        // Main form
         let char_form = form()
-            .attribute("class", "pure-form pure-form-stacked")
-            // -- Character name --
-            .with(label().attribute("for", "character_name").text("Character"))
-            .with(input()
-                .id("character_name")
-                .attribute("type", "text")
-                .tx_on("input", tx.contra_filter_map(|ev: &Event| {
-                    info!("name event:{:?}", ev);
-                    let input = utils::event_input_value(ev)?;
-                    Some(In::CharName(input))
-                }))
-            )
-            // -- Class --
-            .with(label().attribute("for", "character_class").text("Class / Kit"))
-            .with(select()
-                .id("character_class")
-                .with(option().attribute("value", "fighter").text("Fighter"))
-                .with(option().attribute("value", "wizard").text("Wizard"))
-                .with(option().attribute("value", "cleric").text("Cleric"))
-                .with(option().attribute("value", "rogue").text("Rogue"))
-                .tx_on("input", tx.contra_filter_map(|ev: &Event| {
-                    info!("select event:{:?}", ev);
-                    let input = utils::event_select_value(ev)?;
-                    info!("class input:{}", input);
-                    Some(In::CharClass(input))
-                }))
-            )
-            // -- Str --
-            .with(label().attribute("for", "str").text("Str"))
-            .with(input()
-                .id("str")
-                .attribute("type", "text")
-                .tx_on("input", tx.contra_filter_map(|ev: &Event| {
-                    let input = utils::event_input_value(ev)?;
-                    Some(In::Str(input))
-                })))
-            // -- Str Percentile --
-            .with(label().attribute("for", "str_percentile").text("Str %"))
-            .with(input()
-                .id("str_percentile")
-                .attribute("type", "text")
-                .rx_boolean_attribute("disabled", false, rx.branch_filter_map(|ev| {
-                    if let Out::StrPercentile(sp) = ev {
-                        Some(18 != sp.str)
-                    } else {
-                        None
-                    }
-                }))
-                .tx_on("input", tx.contra_filter_map(|ev: &Event| {
-                    let input = utils::event_input_value(ev)?;
-                    Some(In::StrPercentile(input))
-                })))
-            // -- Dex --
-            .with(label().attribute("for", "dex").text("Dex"))
-            .with(input()
-                .id("dex")
-                .attribute("type", "text")
-                .tx_on("input", tx.contra_filter_map(|ev: &Event| {
-                    let input = utils::event_input_value(ev)?;
-                    Some(In::Dex(input))
-                })))
-            // -- Con --
-            .with(label().attribute("for", "con").text("Con"))
-            .with(input()
-                .id("con")
-                .attribute("type", "text")
-                .tx_on("input", tx.contra_filter_map(|ev: &Event| {
-                    let input = utils::event_input_value(ev)?;
-                    Some(In::Con(input))
-                })))
-            .with(label().attribute("for", "int").text("Int"))
-            .with(input()
-                .id("int")
-                .attribute("type", "text")
-                .tx_on("input", tx.contra_filter_map(|ev: &Event| {
-                    let input = utils::event_input_value(ev)?;
-                    Some(In::Int(input))
-                })))
-            .with(label().attribute("for", "wis").text("Wis"))
-            .with(input()
-                .id("wis")
-                .attribute("type", "text")
-                .tx_on("input", tx.contra_filter_map(|ev: &Event| {
-                    let input = utils::event_input_value(ev)?;
-                    Some(In::Wis(input))
-                })))
-            .with(label().attribute("for", "cha").text("Cha"))
-            .with(input()
-                .id("cha")
-                .attribute("type", "text")
-                .tx_on("input", tx.contra_filter_map(|ev: &Event| {
-                    let input = utils::event_input_value(ev)?;
-                    Some(In::Cha(input))
-                })));
+            .attribute("class", "pure-form pure-form-aligned")
+            .with(fieldset()
+                // -- Character name --
+                .with(build_form_field_input(char_name_input, "character_name", "Character"))
+                // -- Class --
+                .with(build_form_field_select(class_select, "character_class", "Class / Kit", vec![
+                    "- Select One -",
+                    CharacterClass::Fighter.to_string().as_str(),
+                    CharacterClass::Cleric.to_string().as_str(),
+                    CharacterClass::Wizard.to_string().as_str(),
+                    CharacterClass::Rogue.to_string().as_str()
+                ]))
+                // -- Str --
+                .with(build_form_field_input(str_input, "str", "Str"))
+                // -- Str Percentile --
+                .with(build_form_field_input(str_per_input, "str_percentile", "Str %"))
+                // -- Dex --
+                .with(build_form_field_input(dex_input, "dex", "Dex"))
+                // -- Con --
+                .with(build_form_field_input(con_input, "con", "Con"))
+                // -- Int --
+                .with(build_form_field_input(int_input, "int", "Int"))
+                // -- Wis --
+                .with(build_form_field_input(wis_input, "wis", "Wis"))
+                // -- Cha --
+                .with(build_form_field_input(cha_input, "cha", "Cha"))
+            );
 
         let json_render = textarea()
+            .attribute("rows", "10")
+            .attribute("cols", "50")
             .rx_text("", rx.branch_filter_map(|ev| {
                 if let Out::JsonRender(Some(render)) = ev {
                     Some(render.clone())
@@ -518,8 +571,8 @@ impl Component for Character {
                 }
             }));
 
-        let derived_scores = div()
-            .with(p().rx_text("Hit Adj", rx.branch_filter_map(|ev| {
+        let derived_str_scores = vec![
+            p().rx_text("Hit Adj", rx.branch_filter_map(|ev| {
                 match ev {
                     Out::StrPercentile(s) => {
                         match s.hit_adj() {
@@ -529,22 +582,101 @@ impl Component for Character {
                     },
                     _ => None
                 }
-            })))
-            .with(p().rx_text("Damage Adj", rx.branch_filter_map(|ev| {
+            })),
+            p().rx_text("Damage Adj", rx.branch_filter_map(|ev| {
                 match ev {
                     Out::StrPercentile(s) => {
                         match s.damage_adj() {
-                            Ok(da) => Some(format!("Damage Adj: {}", da)),
-                            Err(e) => Some(format!("Damage Adj: Error:{:?}", e)),
+                            Ok(v) => Some(format!("Damage Adj: {}", v)),
+                            Err(e) => Some(format!("Damage Adj: Err! {:?}", e))
                         }
-                    }
+                    },
                     _ => None
                 }
-            })));
+            })),
+            p().rx_text("Weight Allow", rx.branch_filter_map(|ev| {
+                match ev {
+                    Out::StrPercentile(s) => {
+                        match s.weight_allow() {
+                            Ok(v) => Some(format!("Weight Allow: {}", v)),
+                            Err(e) => Some(format!("Weight Allow: Err! {:?}", e))
+                        }
+                    },
+                    _ => None
+                }
+            })),
+            p().rx_text("Max Press", rx.branch_filter_map(|ev| {
+                match ev {
+                    Out::StrPercentile(s) => {
+                        match s.max_press() {
+                            Ok(v) => Some(format!("Max Press: {}", v)),
+                            Err(e) => Some(format!("Max Press: Err! {:?}", e))
+                        }
+                    },
+                    _ => None
+                }
+            })),
+        ];
+
+        let mut str_scores = div()
+            .attribute("class", "pure-g");
+        for gb in derived_str_scores {
+            str_scores = str_scores.with(
+                div()
+                    .attribute("class", "pure-u-sm-1-6")
+                    .with(gb));
+        }
+
+        // -- main root --
         div()
-            .with(char_form)
-            .with(derived_scores)
-            .with(json_render)
+            .with(div()
+                .attribute("class", "pure-g")
+                .with(div()
+                    .attribute("class", "pure-u-lg-1-3")
+                    .with(char_form))
+                .with(div()
+                    .attribute("class", "pure-u-lg-1-3")
+                    .with(str_scores)))
+        .with(json_render)
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize)]
+pub enum CharacterClass {
+    Fighter,
+    Cleric,
+    Wizard,
+    Rogue,
+}
+
+impl FromStr for CharacterClass {
+    type Err = CharError;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        match s {
+            "Fighter" => Ok(CharacterClass::Fighter),
+            "Cleric" => Ok(CharacterClass::Cleric),
+            "Wizard" => Ok(CharacterClass::Wizard),
+            "Rogue" => Ok(CharacterClass::Rogue),
+            _ => Err(CharError::CharacterClassParseError(String::from(s)))
+        }
+    }
+}
+
+impl Display for CharacterClass {
+    fn fmt(&self, f: &mut Formatter) -> std::result::Result<(), std::fmt::Error> {
+        match self {
+            CharacterClass::Fighter => write!(f, "Fighter"),
+            CharacterClass::Cleric => write!(f, "Cleric"),
+            CharacterClass::Wizard => write!(f, "Wizard"),
+            CharacterClass::Rogue => write!(f, "Rogue"),
+        }
+    }
+}
+
+impl Default for CharacterClass {
+    fn default() -> Self {
+        CharacterClass::Fighter
     }
 }
 
@@ -571,4 +703,28 @@ fn input_error_handler(element_id: &str, is_valid: bool) {
     }
 }
 
+fn build_form_field_input(input: GizmoBuilder, id: &str, name: &str) -> GizmoBuilder {
+    div()
+        .attribute("class", "pure-control-group")
+        .with(label().attribute("for", id).text(name))
+        .with(input
+            .id(id)
+            .attribute("type", "text")
+        )
+}
+
+fn build_form_field_select(select: GizmoBuilder, id: &str, name: &str, options: Vec<&str>) -> GizmoBuilder {
+    let mut select = select
+        .id(id)
+        .boolean_attribute("required");
+
+    for opt in options {
+        select = select.with(option().attribute("value", opt).text(opt));
+    }
+
+    div()
+        .attribute("class", "pure-control-group")
+        .with(label().attribute("for", id).text(name))
+        .with(select)
+}
 
