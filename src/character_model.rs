@@ -24,7 +24,7 @@ pub enum In {
 
 #[derive(Debug, Clone)]
 pub enum Out {
-    StrPercentile(StrengthPercentile),
+    StrPercentile(Result<StrengthPercentile>),
     CharClass(CharacterClass),
     Dex(Option<i32>),
     Con(Option<i32>),
@@ -38,10 +38,47 @@ pub enum Out {
 pub struct StrengthPercentile {
     str: i32,
     per: Option<i32>,
-    err: Option<CharError>,
 }
 
-impl StrengthPercentile {
+#[derive(Debug, Clone)]
+pub struct OpenDoors {
+    open_doors_bend_bars: i32,
+    // open a locked, barred or magically held door
+    locked_chance: Option<i32>,
+}
+
+#[derive(Default, Serialize)]
+pub struct Character {
+    pub char_name: String,
+    pub char_class: CharacterClass,
+    pub str: i32,
+    pub str_percentile: Option<i32>,
+    pub dex: i32,
+    pub con: i32,
+    pub int: i32,
+    pub wis: i32,
+    pub cha: i32,
+
+    // derived values
+    pub hit_adj: i32,
+    pub damage_adj: i32,
+    pub weight_allow: i32,
+    pub max_press: i32,
+    pub open_doors: i32,
+    pub open_hard_doors: Option<i32>,
+    pub bend_bars_lift_gates: i32,
+}
+
+impl Character {
+
+    fn valid_stat(val: i32) -> bool {
+        (1..=25).contains(&val)
+    }
+
+    fn valid_percentile(val: i32) -> bool {
+        (1..=100).contains(&val)
+    }
+
     fn hit_adj(&self) -> Result<i32> {
         match self.str {
             1 => Ok(-5),
@@ -51,7 +88,7 @@ impl StrengthPercentile {
             8..=16 => Ok(0),
             17 => Ok(1),
             18 => {
-                if let Some(p) = self.per {
+                if let Some(p) = self.str_percentile {
                     match p {
                         1..=50 => Ok(1),
                         51..=99 => Ok(2),
@@ -70,6 +107,7 @@ impl StrengthPercentile {
             err => Err(CharError::InvalidStrength(err)),
         }
     }
+
     fn damage_adj(&self) -> Result<i32> {
         match self.str {
             1 => Ok(-4),
@@ -84,7 +122,7 @@ impl StrengthPercentile {
             16 => Ok(1),
             17 => Ok(1),
             18 => {
-                if let Some(p) = self.per {
+                if let Some(p) = self.str_percentile {
                     match p {
                         1..=50 => Ok(3),
                         51..=75 => Ok(3),
@@ -107,6 +145,7 @@ impl StrengthPercentile {
             i => Err(InvalidStrength(i)),
         }
     }
+
     fn weight_allow(&self) -> Result<i32> {
         match self.str {
             1 => Ok(1),
@@ -121,7 +160,7 @@ impl StrengthPercentile {
             16 => Ok(70),
             17 => Ok(85),
             18 => {
-                if let Some(p) = self.per {
+                if let Some(p) = self.str_percentile {
                     match p {
                         1..=50 => Ok(135),
                         51..=75 => Ok(160),
@@ -144,6 +183,7 @@ impl StrengthPercentile {
             i => Err(InvalidStrength(i)),
         }
     }
+
     fn max_press(&self) -> Result<i32> {
         match self.str {
             1 => Ok(3),
@@ -158,7 +198,7 @@ impl StrengthPercentile {
             16 => Ok(195),
             17 => Ok(220),
             18 => {
-                if let Some(p) = self.per {
+                if let Some(p) = self.str_percentile {
                     match p {
                         1..=50 => Ok(280),
                         51..=75 => Ok(305),
@@ -181,6 +221,7 @@ impl StrengthPercentile {
             i => Err(InvalidStrength(i)),
         }
     }
+
     fn open_doors(&self) -> Result<i32> {
         match self.str {
             1 => Ok(3),
@@ -195,7 +236,7 @@ impl StrengthPercentile {
             16 => Ok(195),
             17 => Ok(220),
             18 => {
-                if let Some(p) = self.per {
+                if let Some(p) = self.str_percentile {
                     match p {
                         1..=50 => Ok(280),
                         51..=75 => Ok(305),
@@ -218,22 +259,7 @@ impl StrengthPercentile {
             i => Err(InvalidStrength(i)),
         }
     }
-}
 
-#[derive(Default, Serialize)]
-pub struct Character {
-    pub char_name: String,
-    pub char_class: CharacterClass,
-    pub str: i32,
-    pub str_percentile: Option<i32>,
-    pub dex: i32,
-    pub con: i32,
-    pub int: i32,
-    pub wis: i32,
-    pub cha: i32,
-}
-
-impl Character {
     fn to_json_string(&self) -> Option<String> {
         Some(serde_json::to_string_pretty(self).ok()?)
     }
@@ -299,10 +325,10 @@ impl Component for Character {
                 match self.handle_str_update(input.as_str()) {
                     Ok(input) => {
                         info!("updated str to {}", input);
-                        tx_view.send(&Out::StrPercentile(StrengthPercentile{str: self.str, per: self.str_percentile, err: None}))
+                        tx_view.send(&Out::StrPercentile(Ok(StrengthPercentile{str: self.str, per: self.str_percentile})))
                     },
                     Err(e) => {
-                        tx_view.send(&Out::StrPercentile(StrengthPercentile{str: self.str, per: self.str_percentile, err: Some(e)}))
+                        tx_view.send(&Out::StrPercentile(Err(e)))
                     }
                 }
             },
@@ -310,10 +336,10 @@ impl Component for Character {
                 match self.handle_str_percentile_update(input.as_str()) {
                     Ok(input) => {
                         info!("updated str_percentile to {:?}", input);
-                        tx_view.send(&Out::StrPercentile(StrengthPercentile{str: self.str, per: self.str_percentile, err: None}))
+                        tx_view.send(&Out::StrPercentile(Ok(StrengthPercentile{str: self.str, per: self.str_percentile})))
                     },
                     Err(e) => {
-                        tx_view.send(&Out::StrPercentile(StrengthPercentile{str: self.str, per: self.str_percentile, err: Some(e)}))
+                        tx_view.send(&Out::StrPercentile(Err(e)))
                     }
                 }
             },
@@ -395,20 +421,30 @@ impl Component for Character {
                     // do something
                 }
                 Out::StrPercentile(sp) => {
-                    if let Some(e) = &sp.err {
-                        match e {
-                            CharError::InvalidStrength(_) | CharError::StrParseError(_) => {
-                                input_error_handler("str", false);
-                            }
-                            CharError::PercentParseError(_) | CharError::InvalidPercentile(_) => {
-                                input_error_handler("str_percentile", false);
-                            }
-                            _ => (),
+                    match sp {
+                        Ok(_) => {
+                            input_error_handler("str", true);
+                            input_error_handler("str_percentile", true);
                         }
-                    } else {
-                        input_error_handler("str", true);
-                        input_error_handler("str_percentile", true);
+                        Err(_) => {
+                            input_error_handler("str", false);
+                            input_error_handler("str_percentile", false);
+                        },
                     }
+//                    if let Some(e) = &sp.err {
+//                        match e {
+//                            CharError::InvalidStrength(_) | CharError::StrParseError(_) => {
+//                                input_error_handler("str", false);
+//                            }
+//                            CharError::PercentParseError(_) | CharError::InvalidPercentile(_) => {
+//                                input_error_handler("str_percentile", false);
+//                            }
+//                            _ => (),
+//                        }
+//                    } else {
+//                        input_error_handler("str", true);
+//                        input_error_handler("str_percentile", true);
+//                    }
                 }
                 Out::Dex(Some(_)) => input_error_handler("dex", true),
                 Out::Dex(None) => input_error_handler("dex", false),
@@ -458,7 +494,7 @@ impl Component for Character {
                 "disabled",
                 false,
                 rx.branch_filter_map(|ev| {
-                    if let Out::StrPercentile(sp) = ev {
+                    if let Out::StrPercentile(Ok(sp)) = ev {
                         Some(18 != sp.str)
                     } else {
                         None
