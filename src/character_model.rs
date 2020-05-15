@@ -24,7 +24,7 @@ pub enum In {
 
 #[derive(Debug, Clone)]
 pub enum Out {
-    StrPercentile(Result<StrengthPercentile>),
+    StrPercentile(Result<Character>),
     CharClass(CharacterClass),
     Dex(Option<i32>),
     Con(Option<i32>),
@@ -47,7 +47,7 @@ pub struct OpenDoors {
     locked_chance: Option<i32>,
 }
 
-#[derive(Default, Serialize)]
+#[derive(Debug, Default, Serialize, Clone)]
 pub struct Character {
     pub char_name: String,
     pub char_class: CharacterClass,
@@ -270,6 +270,10 @@ impl Character {
             .map_err(|e| CharError::StrParseError(e))?;
         if (1..=25).contains(&val) {
             self.str = val;
+            self.hit_adj = self.hit_adj().unwrap_or(0);
+            self.damage_adj = self.damage_adj().unwrap_or(0);
+            self.weight_allow = self.weight_allow().unwrap_or(0);
+            self.max_press = self.max_press().unwrap_or(0);
             Ok(val)
         } else {
             Err(CharError::InvalidStrength(val))
@@ -325,7 +329,7 @@ impl Component for Character {
                 match self.handle_str_update(input.as_str()) {
                     Ok(input) => {
                         info!("updated str to {}", input);
-                        tx_view.send(&Out::StrPercentile(Ok(StrengthPercentile{str: self.str, per: self.str_percentile})))
+                        tx_view.send(&Out::StrPercentile(Ok(self.clone())))
                     },
                     Err(e) => {
                         tx_view.send(&Out::StrPercentile(Err(e)))
@@ -336,7 +340,7 @@ impl Component for Character {
                 match self.handle_str_percentile_update(input.as_str()) {
                     Ok(input) => {
                         info!("updated str_percentile to {:?}", input);
-                        tx_view.send(&Out::StrPercentile(Ok(StrengthPercentile{str: self.str, per: self.str_percentile})))
+                        tx_view.send(&Out::StrPercentile(Ok(self.clone())))
                     },
                     Err(e) => {
                         tx_view.send(&Out::StrPercentile(Err(e)))
@@ -611,40 +615,28 @@ impl Component for Character {
             p().rx_text(
                 "Hit Adj",
                 rx.branch_filter_map(|ev| match ev {
-                    Out::StrPercentile(s) => match s.hit_adj() {
-                        Ok(v) => Some(format!("Hit Adj: {}", v)),
-                        Err(e) => Some(format!("Hit Adj: Err! {:?}", e)),
-                    },
+                    Out::StrPercentile(Ok(c)) => Some(format!("Hit Adj: {}", c.hit_adj)),
                     _ => None,
                 }),
             ),
             p().rx_text(
                 "Damage Adj",
                 rx.branch_filter_map(|ev| match ev {
-                    Out::StrPercentile(s) => match s.damage_adj() {
-                        Ok(v) => Some(format!("Damage Adj: {}", v)),
-                        Err(e) => Some(format!("Damage Adj: Err! {:?}", e)),
-                    },
+                    Out::StrPercentile(Ok(c)) =>  Some(format!("Damage Adj: {}", c.damage_adj)),
                     _ => None,
                 }),
             ),
             p().rx_text(
                 "Weight Allow",
                 rx.branch_filter_map(|ev| match ev {
-                    Out::StrPercentile(s) => match s.weight_allow() {
-                        Ok(v) => Some(format!("Weight Allow: {}", v)),
-                        Err(e) => Some(format!("Weight Allow: Err! {:?}", e)),
-                    },
+                    Out::StrPercentile(Ok(c)) => Some(format!("Weight Allow: {}", c.weight_allow)),
                     _ => None,
                 }),
             ),
             p().rx_text(
                 "Max Press",
                 rx.branch_filter_map(|ev| match ev {
-                    Out::StrPercentile(s) => match s.max_press() {
-                        Ok(v) => Some(format!("Max Press: {}", v)),
-                        Err(e) => Some(format!("Max Press: Err! {:?}", e)),
-                    },
+                    Out::StrPercentile(Ok(c)) =>  Some(format!("Max Press: {}", c.max_press)),
                     _ => None,
                 }),
             ),
